@@ -14,7 +14,6 @@ import re
 import logging
 
 from ._version import get_versions
-
 __version__ = get_versions()['version']
 del get_versions
 
@@ -85,7 +84,6 @@ class Julia2018PrintRestore(octoprint.plugin.StartupPlugin,
 	def enableBabystep(self):
 		"""(bool) Get babystep monitor enabled state plugin setting."""
 		return self._settings.get_boolean(["enableBabystep"])
-
 	# endregion
 
 	# region "IPC"
@@ -100,7 +98,6 @@ class Julia2018PrintRestore(octoprint.plugin.StartupPlugin,
 		self._plugin_manager.send_plugin_message(self._identifier,
 												 dict(type="status", status_type=status_type, status_value=status_value,
 													  status_description=status_description))
-
 	# endregion
 
 	# region "Printer state monitor"
@@ -115,9 +112,6 @@ class Julia2018PrintRestore(octoprint.plugin.StartupPlugin,
 		self.flag_is_saving_state = True
 		self.flag_restore_file_write_in_progress = False
 		self.state_position = {}
-		self.state_IDEX = 1
-		self.IDEX_enabled = False
-		self.state_babystep = 0
 		self._timer_printer_state_monitor.start()
 
 	def stop_printer_state_monitor(self):
@@ -125,8 +119,7 @@ class Julia2018PrintRestore(octoprint.plugin.StartupPlugin,
 		self.flag_is_saving_state = False
 		self._logger.info("Printer state monitor stopped")
 		self._timer_printer_state_monitor.stop()
-
-	# self._timer_printer_state_monitor = None
+		# self._timer_printer_state_monitor = None
 
 	def check_restore_file_exists(self):
 		"""Check if restore file exists
@@ -157,8 +150,6 @@ class Julia2018PrintRestore(octoprint.plugin.StartupPlugin,
 			if "tool1" in temps.keys():
 				if temps["tool1"]["target"] is not None:
 					data["tool1Target"] = temps["tool1"]["target"]
-			if self.IDEX_enabled:
-				data["IDEX"] = self.state_IDEX
 
 			if data["filePos"] is None or "Z" not in data["position"].keys():  # prevents saving when file is garbage
 				return
@@ -185,7 +176,7 @@ class Julia2018PrintRestore(octoprint.plugin.StartupPlugin,
 					txt = f.read()
 					txt = txt.encode('ascii', 'ignore')
 					txt = txt.decode()
-					# txt = "".join(c for c in txt if 31 < ord(c) < 127)
+					#txt = "".join(c for c in txt if 31 < ord(c) < 127)
 					try:
 						data = json.loads(txt)
 						if log:
@@ -215,19 +206,18 @@ class Julia2018PrintRestore(octoprint.plugin.StartupPlugin,
 		Returns:
 			str: Modified or untouched line
 		"""
-		# keep babystepping enabled by default
-		# if "FIRMWARE_NAME" in line:
-		# 	# self._logger.info("FIRMWARE_NAME line: {}".format(line))
-		# 	# Create a dict with all the keys/values returned by the M115 request
-		# 	data = parse_firmware_line(line)
-		#
-		# 	regex = r"Marlin J18([A-Z]{2})_([0-9]{6}_[0-9]{4})_HA"
-		# 	matches = re.search(regex, data['FIRMWARE_NAME'])
-		#
-		# 	enable_babystep = matches and len(matches.groups()) == 2 and matches.group(1) in ["PT", "PE"]
-		# 	if self.enableBabystep != enable_babystep:
-		# 		self._settings.set_boolean(["enableBabystep"], enable_babystep)
-		# 		self._settings.save()
+		if "FIRMWARE_NAME" in line:
+			# self._logger.info("FIRMWARE_NAME line: {}".format(line))
+			# Create a dict with all the keys/values returned by the M115 request
+			data = parse_firmware_line(line)
+
+			regex = r"Marlin J18([A-Z]{2})_([0-9]{6}_[0-9]{4})_HA"
+			matches = re.search(regex, data['FIRMWARE_NAME'])
+
+			enable_babystep = matches and len(matches.groups()) == 2 and matches.group(1) in ["PT", "PE"]
+			if self.enableBabystep != enable_babystep:
+				self._settings.set_boolean(["enableBabystep"], enable_babystep)
+				self._settings.save()
 		return line
 
 	def record_current_state(self, gcode, cmd):
@@ -266,13 +256,8 @@ class Julia2018PrintRestore(octoprint.plugin.StartupPlugin,
 							self.state_babystep = self.state_babystep + float(val)
 						except Exception as e:
 							self._logger.error("Could not parse babystep: " + str(e))
-				elif gcode == "M605":
-					if "S" in cmd:
-						self.state_IDEX = int(cmd[cmd.index('S') + 1:].split(' ', 1)[0])
-						self.IDEX_enabled = True
 			except:
 				self._logger.info("Error getting latest command sent to printer")
-
 	# endregion
 
 	# region "Print Restore"
@@ -290,10 +275,10 @@ class Julia2018PrintRestore(octoprint.plugin.StartupPlugin,
 
 			data = restore_state[1]
 
-			if data["fileName"] != "None":  # file name is not none
+			if data["fileName"] != "None":   # file name is not none
 				self._printer.commands("M117 RESTORE_STARTED")
 
-				# start heating to prepare for initial move
+				#start heating to prepare for initial move
 
 				if float(data["bedTarget"]) > 0:
 					self._printer.commands("M140 S{}".format(float(data["bedTarget"])))
@@ -305,24 +290,22 @@ class Julia2018PrintRestore(octoprint.plugin.StartupPlugin,
 						self._printer.commands("M104 T1 S140".format(float(data["tool1Target"])))
 				if "tool0Target" in data.keys():
 					if float(data["tool0Target"]) > 0:
-						self._printer.commands(
-							"M109 T0 S140")  # just enough heat to remove nozzle without disloging print
+						self._printer.commands("M109 T0 S140") #just enough heat to remove nozzle without disloging print
 				if "tool1Target" in data.keys():
 					if float(data["tool1Target"]) > 0:
-						self._printer.commands(
-							"M109 T1 S140")  # just enough heat to remove nozzle without disloging print
+						self._printer.commands("M109 T1 S140")  #just enough heat to remove nozzle without disloging print
 				# Move the print head
 				self._printer.commands("T0")
 				self._printer.home("z")
 				self._printer.home(["x", "y"])
 
-				# Set to actual heating temperatures
+				#Set to actual heating temperatures
 
 				if "tool0Target" in data.keys():
 					if float(data["tool0Target"]) > 0:
 						self._printer.commands("M104 T0 S{}".format(float(data["tool0Target"])))
 				if "tool1Target" in data.keys():
-					if float(data["tool1Target"]) > 0:
+					if float(data["tool1Target"] )> 0:
 						self._printer.commands("M104 T1 S{}".format(float(data["tool1Target"])))
 				if float(data["bedTarget"]) > 0:
 					self._printer.commands("M190 S{}".format(float(data["bedTarget"])))
@@ -342,45 +325,16 @@ class Julia2018PrintRestore(octoprint.plugin.StartupPlugin,
 					if int(data["position"]["FAN"]) > 0:
 						self._printer.commands("M106 S{}".format(int(data["position"]["FAN"])))
 
-				if "IDEX" in data.keys():
-					if data["IDEX"] == 1 or data["IDEX"] == 0:
-						commands = ["M420 S1",
-									"G90",
-									"G1 Z{} F4000".format(float(data["position"]["Z"])),
-									"T{}".format(int(data["position"]["T"])),
-									"G92 E0",
-									"G1 F200 E5",
-									"CLEAN_NOZZLE",
-									"G92 E{}".format(float(data["position"]["E"])),
-									"G1 X{} Y{} F3000".format(float(data["position"]["X"]),
-															  float(data["position"]["Y"])),
-									"G1 F{}".format(float(data["position"]["F"]))
-									]
-					else:
-						commands = ["M605 S{}".format(int(data["IDEX"])),
-									"M420 S1",
-									"G90",
-									"G1 Z{} F4000".format(float(data["position"]["Z"])),
-									"PAUSE"
-									"RESUME"
-									"G92 E{}".format(float(data["position"]["E"])),
-									"G1 X{} Y{} F3000".format(float(data["position"]["X"]),
-															  float(data["position"]["Y"])),
-									"G1 F{}".format(float(data["position"]["F"]))
-									]
-				else:
-					commands = ["M420 S1",
-								"G90",
-								"G1 Z{} F4000".format(float(data["position"]["Z"])),
-								"T{}".format(int(data["position"]["T"])),
-								"G92 E0",
-								"G1 F200 E5",
-								"CLEAN_NOZZLE",
-								"G92 E{}".format(float(data["position"]["E"])),
-								"G1 X{} Y{} F3000".format(float(data["position"]["X"]), float(data["position"]["Y"])),
-								"G1 F{}".format(float(data["position"]["F"]))
-								]
-
+				commands = ["M420 S1",
+							"G90",
+							"G1 Z{} F4000".format(float(data["position"]["Z"])),
+							"T{}".format(int(data["position"]["T"])),
+							"G92 E0",
+							"G1 F200 E3",
+							"G92 E{}".format(float(data["position"]["E"])),
+							"G1 X{} Y{} F3000".format(float(data["position"]["X"]), float(data["position"]["Y"])),
+							"G1 F{}".format(float(data["position"]["F"]))
+							]
 				self._printer.commands(commands)
 
 				if "babystep" in data.keys():
@@ -395,7 +349,7 @@ class Julia2018PrintRestore(octoprint.plugin.StartupPlugin,
 				self._send_status(status_type="PRINT_RESURRECTION_STARTED", status_value=data["fileName"],
 								  status_description="Print resurrection started")
 				return (True, None)
-			else:  # file name is None
+			else:    # file name is None
 				self._logger.error("Did not find print job filename in restore file\n" + json.dumps(data))
 				return (False, "Gcode file name is none")
 		except Exception as e:
@@ -418,7 +372,6 @@ class Julia2018PrintRestore(octoprint.plugin.StartupPlugin,
 			elif "RESTORE_COMPLETE" in cmd:
 				self._logger.info("RESTORE_COMPLETE")
 				self.flag_restore_in_progress = False
-
 	# endregion
 
 	# region "Flask blueprint routes"
@@ -467,8 +420,7 @@ class Julia2018PrintRestore(octoprint.plugin.StartupPlugin,
 	@octoprint.plugin.BlueprintPlugin.route("/getSettings", methods=["GET"])
 	def route_get_settings(self):
 		"""REST endpoint to get plugin settings"""
-		return jsonify(interval=self.interval, autoRestore=self.autoRestore, enabled=self.enabled,
-					   enableBabystep=self.enableBabystep, version=__version__)
+		return jsonify(interval=self.interval, autoRestore=self.autoRestore, enabled=self.enabled, version=__version__)
 
 	@octoprint.plugin.BlueprintPlugin.route("/saveSettings", methods=["POST"])
 	def route_save_settings(self):
@@ -480,10 +432,9 @@ class Julia2018PrintRestore(octoprint.plugin.StartupPlugin,
 			data = request.json
 		except:
 			return make_response("Malformed JSON body in request", 400)
-		if all(item in data.keys() for item in ("autoRestore", "enabled", "interval", "enableBabystep")):
+		if all(item in data.keys() for item in ("autoRestore", "enabled", "interval")):
 			self.on_settings_save(data)
 			return make_response("Settings Saved", 200)
-
 	# endregion
 
 	# region "Plugin management"
@@ -511,8 +462,6 @@ class Julia2018PrintRestore(octoprint.plugin.StartupPlugin,
 		# self.interval = float(self._settings.get(["interval"]))
 		self._timer_printer_state_monitor = None
 		self.state_position = {}
-		self.state_IDEX = 1  ## defaults to M605 S1
-		self.IDEX_enabled = False  ## flag to check if IDEX is enabled in the gcode parsed
 		self.state_babystep = 0
 		self.flag_is_saving_state = False
 		self.flag_restore_in_progress = False
@@ -540,11 +489,11 @@ class Julia2018PrintRestore(octoprint.plugin.StartupPlugin,
 				if self.check_restore_file_exists():
 					if self.autoRestore:
 						self.start_restore()
-			# else:
-			#     self.parse_restore_file()
+				# else:
+				#     self.parse_restore_file()
 
 			elif event in (Events.PRINT_STARTED, Events.PRINT_RESUMED):
-				# self.delete_restore_file()
+				#self.delete_restore_file()
 				self.start_printer_state_monitor()
 
 			elif event in Events.PRINT_PAUSED:
@@ -580,7 +529,7 @@ class Julia2018PrintRestore(octoprint.plugin.StartupPlugin,
 			enabled=True,
 			autoRestore=False,
 			interval=1,
-			enableBabystep=True
+			enableBabystep=None
 		)
 
 	def on_settings_migrate(self, target, current):
@@ -614,7 +563,6 @@ class Julia2018PrintRestore(octoprint.plugin.StartupPlugin,
 		else:
 			if self._printer.is_printing() or self._printer.is_paused():
 				self.start_printer_state_monitor()
-
 	# endregion
 
 	# region "OctoPrint hooks"
@@ -653,10 +601,9 @@ class Julia2018PrintRestore(octoprint.plugin.StartupPlugin,
 			gcode (str): Parsed GCODE command. None if no known command could be parsed.
 		"""
 		self.detect_restore_phase(gcode, cmd)
-
 	# endregion
 
-	# region Update Info
+	#region Update Info
 	def get_update_information(self):
 		"""Plugin configuration for software update."""
 		return dict(
@@ -672,7 +619,8 @@ class Julia2018PrintRestore(octoprint.plugin.StartupPlugin,
 				pip="https://github.com/FracktalWorks/Julia2018PrintRestore/archive/{target_version}.zip"
 			)
 		)
-# endregion
+	# endregion
+
 
 
 __plugin_name__ = "Julia Print Restore"
